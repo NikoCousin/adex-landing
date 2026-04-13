@@ -1,285 +1,301 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useEffect, useState } from "react";
 import { motion, useInView } from "framer-motion";
-import Link from "next/link";
 
-const cryptoPrices = [
-  { ticker: "TON", name: "Toncoin", price: "$1.222", color: "#0098EA" },
-  { ticker: "BTC", name: "Bitcoin", price: "$66,634", color: "#F7931A" },
-  { ticker: "SOL", name: "Solana", price: "$80.56", color: "#9945FF" },
-  { ticker: "SUI", name: "Sui", price: "$0.8584", color: "#6FBCF0" },
-];
+const GREEN = "#1B3D2F";
 
-const fxPairs = [
-  {
-    pair: "USDT-RUB",
-    name: "Tether",
-    rate: "81.8",
-    flag: "🇷🇺",
-    colors: ["#FFFFFF", "#0039A6", "#D52B1E"],
+const fadeUp = (delay = 0) => ({
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { duration: 0.65, delay, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
   },
-  {
-    pair: "USDT-BYN",
-    name: "Tether",
-    rate: "3.0387",
-    flag: "🇧🇾",
-    colors: ["#C8313E", "#4AA657"],
-  },
-  {
-    pair: "USDT-EUR",
-    name: "Tether",
-    rate: "0.8853",
-    flag: "🇪🇺",
-    colors: ["#003399", "#FFCC00"],
-  },
-  {
-    pair: "USDT-USD",
-    name: "Tether",
-    rate: "1.0076",
-    flag: "🇺🇸",
-    colors: ["#B22234", "#3C3B6E"],
-  },
-];
+});
 
-function CryptoCard({
-  ticker,
-  name,
-  price,
-  color,
-  index,
-  isVisible,
-}: {
-  ticker: string;
-  name: string;
-  price: string;
-  color: string;
-  index: number;
-  isVisible: boolean;
+// ─── Animated number (counts up once in-view) ────────────────────────────────
+
+function AnimatedPrice({ value, prefix = "", decimals = 2, active }: {
+  value: number; prefix?: string; decimals?: number; active: boolean;
 }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-      transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
-      className="relative flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-white/5 rounded-xl border border-white/10 min-w-[160px] overflow-hidden group"
-    >
-      {/* Shimmer effect */}
-      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-      <motion.div
-        className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent"
-        animate={{ translateX: ["-100%", "100%"] }}
-        transition={{
-          duration: 3,
-          delay: index * 0.5,
-          repeat: Infinity,
-          repeatDelay: 5,
-          ease: "easeInOut",
-        }}
-      />
+  const [display, setDisplay] = useState(0);
+  const started = useRef(false);
 
-      {/* Icon */}
-      <div
-        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-        style={{ backgroundColor: color }}
-      >
-        {ticker.charAt(0)}
-      </div>
+  useEffect(() => {
+    if (!active || started.current) return;
+    started.current = true;
+    const duration = 900;
+    const start = performance.now();
+    const from = value * 0.88;
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(from + (value - from) * eased);
+      if (p < 1) requestAnimationFrame(tick);
+      else setDisplay(value);
+    };
+    requestAnimationFrame(tick);
+  }, [active, value]);
 
-      {/* Info */}
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-white font-semibold text-sm">{ticker}</span>
-          <span className="text-white/50 text-xs">{name}</span>
-        </div>
-        <p className="text-white font-bold text-lg">{price}</p>
-      </div>
-    </motion.div>
-  );
+  const formatted = display.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+  return <span>{prefix}{formatted}</span>;
 }
 
-function FXRow({
-  pair,
-  name,
-  rate,
-  flag,
-  colors,
-  index,
-  isVisible,
-  isLast,
-}: {
-  pair: string;
-  name: string;
-  rate: string;
-  flag: string;
-  colors: string[];
-  index: number;
-  isVisible: boolean;
-  isLast: boolean;
-}) {
+// ─── Crypto price tiles ───────────────────────────────────────────────────────
+
+const CRYPTO_TILES = [
+  { symbol: "TON",  letter: "T", bg: "#0098EA", price: 1.222,    dec: 3 },
+  { symbol: "BTC",  letter: "₿", bg: "#F7931A", price: 66634,    dec: 0 },
+  { symbol: "SOL",  letter: "◎", bg: "#9945FF", price: 80.56,    dec: 2 },
+  { symbol: "SUI",  letter: "S", bg: "#4DA2FF", price: 0.8584,   dec: 4 },
+];
+
+function CryptoPriceFeed({ active }: { active: boolean }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={isVisible ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
-      transition={{ duration: 0.5, delay: 0.5 + index * 0.1 }}
-      className={`relative flex items-center justify-between py-4 px-4 sm:px-6 ${
-        !isLast ? "border-b border-white/10" : ""
-      } overflow-hidden group`}
-    >
-      {/* Shimmer effect */}
-      <motion.div
-        className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent"
-        animate={{ translateX: ["-100%", "100%"] }}
-        transition={{
-          duration: 3,
-          delay: 1 + index * 0.4,
-          repeat: Infinity,
-          repeatDelay: 6,
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* Left side */}
-      <div className="flex items-center gap-3">
-        {/* Flag circle */}
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-sm overflow-hidden"
-          style={{
-            background: `linear-gradient(135deg, ${colors[0]} 50%, ${colors[1] || colors[0]} 50%)`,
-          }}
-        >
-          <span className="text-lg">{flag}</span>
-        </div>
-
-        {/* Pair info */}
-        <div>
-          <p className="text-white font-semibold text-sm sm:text-base">{pair}</p>
-          <p className="text-white/40 text-xs">USDT</p>
-        </div>
-      </div>
-
-      {/* Middle */}
-      <p className="text-white/60 text-sm hidden sm:block">{name}</p>
-
-      {/* Right side - Rate */}
-      <p className="text-white font-bold text-base sm:text-lg">{rate}</p>
-    </motion.div>
-  );
-}
-
-export default function Brokerage() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const isInView = useInView(sectionRef, { once: true, amount: 0.2 });
-
-  return (
-    <section ref={sectionRef} className="py-16 sm:py-20 bg-cream overflow-hidden">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        {/* Top Part - Header */}
-        <div className="text-center mb-12">
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5 }}
-            className="text-xs sm:text-sm uppercase tracking-[0.2em] text-forest-accent font-medium mb-4"
-          >
-            Crypto Brokerage
-          </motion.p>
-
-          <motion.h2
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="font-display text-3xl sm:text-4xl md:text-5xl text-forest-primary mb-6"
-          >
-            Fast and Secure Brokerage Service
-          </motion.h2>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-gray-600 max-w-[600px] mx-auto mb-8 leading-relaxed"
-          >
-            Buy and sell digital assets through a professional, streamlined process
-            designed for clarity, speed, and dependable execution.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
-            <Link
-              href="/get-started"
-              className="inline-flex items-center gap-2 px-8 py-3 border-2 border-forest-primary text-forest-primary rounded-full font-medium transition-all duration-300 hover:bg-forest-primary hover:text-white"
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px" style={{ background: "rgba(255,255,255,0.05)" }}>
+      {CRYPTO_TILES.map(({ symbol, letter, bg, price, dec }) => (
+        <div key={symbol} className="flex flex-col gap-2 p-4" style={{ background: "#111827" }}>
+          <div className="flex items-center gap-2">
+            <div
+              className="flex items-center justify-center rounded-full text-white font-bold flex-shrink-0"
+              style={{ width: 26, height: 26, background: bg, fontSize: 11 }}
             >
-              Get Started
-            </Link>
-          </motion.div>
+              {letter}
+            </div>
+            <span className="text-xs font-semibold" style={{ color: "#9CA3AF" }}>{symbol}</span>
+          </div>
+          <span className="text-sm font-semibold tabular-nums" style={{ color: "#F9FAFB" }}>
+            $<AnimatedPrice value={price} decimals={dec} active={active} />
+          </span>
         </div>
+      ))}
+    </div>
+  );
+}
 
-        {/* Bottom Part - Dark Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="max-w-[900px] mx-auto bg-[#0f1923] rounded-2xl overflow-hidden"
+// ─── FX price feed ────────────────────────────────────────────────────────────
+
+const FX_ROWS = [
+  { pair: "USDT-RUB", label: "Tether", flag: "#D52B1E", flagLabel: "RU", rate: 81.80,   dec: 2 },
+  { pair: "USDT-BYN", label: "Tether", flag: "#CF101A", flagLabel: "BY", rate: 3.0387,  dec: 4 },
+  { pair: "USDT-EUR", label: "Tether", flag: "#003399", flagLabel: "EU", rate: 0.8853,  dec: 4 },
+  { pair: "USDT-USD", label: "Tether", flag: "#3C3B6E", flagLabel: "US", rate: 1.0076,  dec: 4 },
+];
+
+function FxPriceFeed({ active }: { active: boolean }) {
+  return (
+    <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      {FX_ROWS.map(({ pair, label, flag, flagLabel, rate, dec }, i) => (
+        <div
+          key={pair}
+          className="flex items-center justify-between px-5 py-3.5"
+          style={{ borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.06)" }}
         >
-          {/* Crypto Price Feed Row */}
-          <div className="p-4 sm:p-6 bg-white/[0.02] border-b border-white/10">
-            <div className="flex gap-3 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide sm:grid sm:grid-cols-4 sm:gap-4">
-              {cryptoPrices.map((crypto, index) => (
-                <CryptoCard
-                  key={crypto.ticker}
-                  {...crypto}
-                  index={index}
-                  isVisible={isInView}
-                />
-              ))}
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center rounded-full text-white flex-shrink-0"
+              style={{ width: 28, height: 28, background: flag, fontSize: 8, fontWeight: 700, letterSpacing: "0.02em" }}
+            >
+              {flagLabel}
+            </div>
+            <div>
+              <p className="text-xs font-semibold" style={{ color: "#F3F4F6", letterSpacing: "0.04em" }}>{pair}</p>
+              <p className="text-[10px]" style={{ color: "#6B7280" }}>{label}</p>
             </div>
           </div>
+          <span className="text-sm font-semibold tabular-nums" style={{ color: "#D1FAE5" }}>
+            <AnimatedPrice value={rate} decimals={dec} active={active} />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-          {/* FX Price Feed Table */}
-          <div>
-            {fxPairs.map((fx, index) => (
-              <FXRow
-                key={fx.pair}
-                {...fx}
-                index={index}
-                isVisible={isInView}
-                isLast={index === fxPairs.length - 1}
-              />
+// ─── Mockup card ─────────────────────────────────────────────────────────────
+
+function MockupCard({ active }: { active: boolean }) {
+  const [tab, setTab] = useState<"crypto" | "fx">("crypto");
+
+  return (
+    <div
+      className="w-full rounded-2xl overflow-hidden"
+      style={{
+        background: "#111827",
+        border: "1px solid rgba(255,255,255,0.07)",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.10)",
+        maxWidth: 620,
+      }}
+    >
+      {/* Card header bar */}
+      <div
+        className="flex items-center justify-between px-5 py-3.5"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#0F172A" }}
+      >
+        {/* Tab pills */}
+        <div className="flex items-center gap-1.5" style={{ background: "rgba(255,255,255,0.05)", borderRadius: 99, padding: "3px" }}>
+          {(["crypto", "fx"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className="text-[9px] sm:text-[10px] font-semibold px-2.5 sm:px-3 py-1 transition-all duration-200 whitespace-nowrap"
+              style={{
+                borderRadius: 99,
+                letterSpacing: "0.05em",
+                background: tab === t ? GREEN : "transparent",
+                color: tab === t ? "#fff" : "#6B7280",
+              }}
+            >
+              <span className="sm:hidden">{t === "crypto" ? "Crypto" : "FX"}</span>
+              <span className="hidden sm:inline">{t === "crypto" ? "Crypto price feed" : "FX price feed"}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Live indicator */}
+        <div className="flex items-center gap-1.5">
+          <span className="block rounded-full" style={{ width: 6, height: 6, background: "#10B981" }} />
+          <span className="text-[10px] font-medium" style={{ color: "#6B7280" }}>Live</span>
+        </div>
+      </div>
+
+      {/* Price tiles */}
+      <CryptoPriceFeed active={active} />
+
+      {/* Divider + CTA */}
+      <div
+        className="flex items-center justify-between px-5 py-3"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.07)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <span className="text-[11px] font-medium" style={{ color: "#6B7280", letterSpacing: "0.06em" }}>
+          {tab === "crypto" ? "LIVE RATES" : "FX RATES"}
+        </span>
+        <a
+          href="#"
+          className="text-[11px] font-semibold transition-opacity hover:opacity-80"
+          style={{ color: "#6EE7B7", letterSpacing: "0.04em" }}
+        >
+          Get Started →
+        </a>
+      </div>
+
+      {/* Feed content */}
+      {tab === "crypto" ? (
+        <div className="px-5 py-4">
+          <p className="text-[10px] mb-3" style={{ color: "#4B5563", letterSpacing: "0.12em" }}>ALL PAIRS</p>
+          <div className="space-y-0">
+            {FX_ROWS.map(({ pair, label, flag, flagLabel, rate, dec }, i) => (
+              <div
+                key={pair}
+                className="flex items-center justify-between py-2.5"
+                style={{ borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.04)" }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="flex items-center justify-center rounded-full text-white flex-shrink-0"
+                    style={{ width: 24, height: 24, background: flag, fontSize: 7, fontWeight: 700 }}
+                  >
+                    {flagLabel}
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold" style={{ color: "#E5E7EB" }}>{pair}</p>
+                    <p className="text-[10px]" style={{ color: "#4B5563" }}>{label}</p>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold tabular-nums" style={{ color: "#D1FAE5" }}>
+                  <AnimatedPrice value={rate} decimals={dec} active={active} />
+                </span>
+              </div>
             ))}
           </div>
+        </div>
+      ) : (
+        <FxPriceFeed active={active} />
+      )}
+    </div>
+  );
+}
+
+// ─── Section ──────────────────────────────────────────────────────────────────
+
+export default function Brokerage() {
+  const ref = useRef<HTMLElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+
+  return (
+    <section
+      ref={ref}
+      className="w-full bg-white py-12 sm:py-16 lg:py-20"
+      style={{ borderTop: "1px solid #f0f0f0" }}
+    >
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 lg:px-10 flex flex-col items-center w-full">
+
+        {/* Eyebrow */}
+        <motion.p
+          variants={fadeUp(0)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="text-[11px] uppercase font-medium mb-4 text-center"
+          style={{ color: "#7a9e8e", letterSpacing: "0.28em" }}
+        >
+          Brokerage
+        </motion.p>
+
+        {/* Title */}
+        <motion.h2
+          variants={fadeUp(0.08)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="font-display text-center leading-[1.1] mb-5"
+          style={{ color: GREEN, fontSize: "clamp(26px, 3.8vw, 44px)", maxWidth: 540 }}
+        >
+          Fast and Secure Brokerage Service
+        </motion.h2>
+
+        {/* Subtitle */}
+        <motion.p
+          variants={fadeUp(0.16)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="text-center text-[15px] leading-[1.75] mb-12"
+          style={{ color: "#7a8a82", maxWidth: 600 }}
+        >
+          Buy and sell digital assets through a professional, streamlined process
+          designed for clarity, speed, and dependable execution.
+        </motion.p>
+
+        {/* Mockup card */}
+        <motion.div
+          variants={fadeUp(0.24)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="w-full flex justify-center mb-10"
+        >
+          <MockupCard active={inView} />
         </motion.div>
 
-        {/* CTA Link */}
+        {/* Bottom CTA */}
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={isInView ? { opacity: 1 } : { opacity: 0 }}
-          transition={{ duration: 0.5, delay: 0.8 }}
-          className="text-center pt-8"
+          variants={fadeUp(0.32)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
         >
-          <Link
+          <a
             href="#"
-            className="inline-flex items-center gap-2 text-forest-accent font-medium hover:text-forest-primary transition-colors duration-300 group"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity hover:opacity-70"
+            style={{ color: GREEN }}
           >
             Open Brokerage Account
-            <svg
-              className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 8l4 4m0 0l-4 4m4-4H3"
-              />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
             </svg>
-          </Link>
+          </a>
         </motion.div>
+
       </div>
     </section>
   );

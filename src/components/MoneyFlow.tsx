@@ -3,402 +3,396 @@
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
 
-const cryptoCurrencies = [
-  { ticker: "USDT", name: "Tether" },
-  { ticker: "BTC", name: "Bitcoin" },
-  { ticker: "ETH", name: "Ethereum" },
+const GREEN = "#1B3D2F";
+const LINE = "rgba(27,61,47,0.13)";
+const DOT = "#2DD4BF";
+
+// ─── Shared sub-components ────────────────────────────────────────────────────
+
+function Pill({ label, cx, cy, pw, ph }: {
+  label: string; cx: number; cy: number; pw: number; ph: number;
+}) {
+  return (
+    <g>
+      <rect
+        x={cx - pw / 2} y={cy - ph / 2}
+        width={pw} height={ph} rx={ph / 2}
+        fill="white" stroke={GREEN} strokeOpacity={0.26} strokeWidth={1.2}
+      />
+      <text
+        x={cx} y={cy}
+        textAnchor="middle" dominantBaseline="middle"
+        fill={GREEN} fontSize={11.5} fontFamily="Inter,sans-serif" fontWeight={600}
+        style={{ letterSpacing: "0.07em" }}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function Hub({ cx, cy, r, fs }: { cx: number; cy: number; r: number; fs: number }) {
+  return (
+    <g>
+      {/* Soft radial glow */}
+      <circle cx={cx} cy={cy} r={r + 80} fill="url(#hubGlow)" />
+
+      {/* Concentric pulse rings */}
+      <circle cx={cx} cy={cy} r={r + 30} fill="none" stroke={GREEN} strokeOpacity={0.06} strokeWidth={1} />
+      <circle cx={cx} cy={cy} r={r + 58} fill="none" stroke={GREEN} strokeOpacity={0.04} strokeWidth={1} />
+      <circle cx={cx} cy={cy} r={r + 90} fill="none" stroke={GREEN} strokeOpacity={0.025} strokeWidth={1} />
+
+      {/* Hub circles */}
+      <circle cx={cx} cy={cy} r={r + 16} fill={GREEN} fillOpacity={0.05} />
+      <circle cx={cx} cy={cy} r={r + 8}  fill={GREEN} fillOpacity={0.08} />
+      <circle cx={cx} cy={cy} r={r}       fill={GREEN} />
+
+      {/* Label */}
+      <text
+        x={cx} y={cy}
+        textAnchor="middle" dominantBaseline="middle"
+        fill="white" fontSize={fs} fontFamily="Inter,sans-serif" fontWeight={700}
+        style={{ letterSpacing: "0.12em" }}
+      >
+        ADEX
+      </text>
+    </g>
+  );
+}
+
+interface DotDef { path: string; dur: number; begin: number; reverse?: boolean }
+
+function Dot({ path, dur, begin, reverse = false }: DotDef) {
+  const base = { path, dur: `${dur}s`, begin: `${begin}s`, repeatCount: "indefinite", calcMode: "linear" };
+  const aProps = reverse ? { ...base, keyPoints: "1;0", keyTimes: "0;1" } : base;
+  return (
+    <>
+      <circle r={5.5} fill={DOT} fillOpacity={0.18}>
+        <animateMotion {...(aProps as any)} />
+      </circle>
+      <circle r={2.6} fill={DOT}>
+        <animateMotion {...(aProps as any)} />
+      </circle>
+    </>
+  );
+}
+
+// ─── Desktop diagram — 760 × 390, scaled up with 5 crypto + 6 fiat ───────────
+
+const DW = 760, DH = 390;
+const DHX = 380, DHY = 192, DHR = 62;
+const DLX = 86,  DRX = 674, DPW = 92, DPH = 34;
+
+const D_CRYPTO = [
+  { label: "USDT", y: 60  },
+  { label: "BTC",  y: 125 },
+  { label: "ETH",  y: 192 },
+  { label: "SOL",  y: 259 },
+  { label: "USDC", y: 324 },
 ];
 
-const fiatCurrencies = [
-  { ticker: "USD", name: "US Dollar" },
-  { ticker: "EUR", name: "Euro" },
-  { ticker: "AMD", name: "Armenian Dram" },
-  { ticker: "GBP", name: "British Pound" },
+const D_FIAT = [
+  { label: "USD",  y: 53  },
+  { label: "EUR",  y: 108 },
+  { label: "AMD",  y: 163 },
+  { label: "GBP",  y: 218 },
+  { label: "AED",  y: 273 },
+  { label: "CHF",  y: 328 },
 ];
 
-interface CryptoBadgeProps {
-  ticker: string;
-  name: string;
-  index: number;
-  isVisible: boolean;
+function dlPath(y: number) {
+  const x0 = DLX + DPW / 2, x1 = DHX - DHR, mx = Math.round((x0 + x1) / 2);
+  return `M ${x0} ${y} C ${mx} ${y} ${mx} ${DHY} ${x1} ${DHY}`;
+}
+function drPath(y: number) {
+  const x0 = DHX + DHR, x1 = DRX - DPW / 2, mx = Math.round((x0 + x1) / 2);
+  return `M ${x0} ${DHY} C ${mx} ${DHY} ${mx} ${y} ${x1} ${y}`;
 }
 
-function CryptoBadge({ ticker, name, index, isVisible }: CryptoBadgeProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={isVisible ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
-      transition={{ duration: 0.5, delay: index * 0.1 }}
-      className="flex items-center gap-2"
-    >
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-full shadow-sm border border-gray-100">
-        <span className="font-bold text-forest-primary">{ticker}</span>
-        <span className="text-sm text-gray-400">{name}</span>
-      </div>
-    </motion.div>
-  );
+function buildDesktopDots(): DotDef[] {
+  const out: DotDef[] = [];
+
+  D_CRYPTO.forEach(({ y }, i) => {
+    const p = dlPath(y), d = 2.1 + i * 0.2;
+    // 3 evenly-spaced dots per line
+    out.push({ path: p, dur: d, begin: i * 0.42 });
+    out.push({ path: p, dur: d, begin: i * 0.42 + d / 3 });
+    out.push({ path: p, dur: d, begin: i * 0.42 + d * 2 / 3 });
+    // occasional reverse dot for visual interest
+    if (i % 2 === 0) out.push({ path: p, dur: d + 0.9, begin: i * 0.32 + 0.55, reverse: true });
+  });
+
+  D_FIAT.forEach(({ y }, i) => {
+    const p = drPath(y), d = 2.2 + i * 0.17;
+    out.push({ path: p, dur: d, begin: i * 0.36 + 0.1 });
+    out.push({ path: p, dur: d, begin: i * 0.36 + 0.1 + d / 3 });
+    out.push({ path: p, dur: d, begin: i * 0.36 + 0.1 + d * 2 / 3 });
+    if (i % 2 === 1) out.push({ path: p, dur: d + 0.8, begin: i * 0.28 + 0.85, reverse: true });
+  });
+
+  return out;
 }
 
-interface FiatBadgeProps {
-  ticker: string;
-  name: string;
-  index: number;
-  isVisible: boolean;
-}
-
-function FiatBadge({ ticker, name, index, isVisible }: FiatBadgeProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={isVisible ? { opacity: 1, x: 0 } : { opacity: 0, x: 20 }}
-      transition={{ duration: 0.5, delay: index * 0.1 + 0.2 }}
-      className="flex items-center justify-end gap-2"
-    >
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-full shadow-sm border border-gray-100">
-        <span className="text-sm text-gray-400">{name}</span>
-        <span className="font-bold text-forest-primary">{ticker}</span>
-      </div>
-    </motion.div>
-  );
-}
-
-function AdexHub({ isVisible }: { isVisible: boolean }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={isVisible ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
-      transition={{ duration: 0.6, delay: 0.3 }}
-      className="relative flex items-center justify-center"
-    >
-      {/* Outer pulsing glow rings */}
-      <motion.div
-        className="absolute w-28 h-28 rounded-full border-2 border-forest-accent/30"
-        animate={{
-          scale: [1, 1.15, 1],
-          opacity: [0.3, 0.1, 0.3],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-      <motion.div
-        className="absolute w-28 h-28 rounded-full border border-forest-light/20"
-        animate={{
-          scale: [1, 1.25, 1],
-          opacity: [0.2, 0.05, 0.2],
-        }}
-        transition={{
-          duration: 3,
-          delay: 0.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* Main hub circle */}
-      <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-forest-primary to-forest-medium flex items-center justify-center shadow-lg shadow-forest-primary/20">
-        {/* Inner glow */}
-        <div className="absolute inset-1 rounded-full bg-gradient-to-br from-forest-accent/20 to-transparent" />
-        <span className="relative font-display text-white text-lg tracking-wide">
-          ADE<span className="text-forest-light">X</span>
-        </span>
-      </div>
-    </motion.div>
-  );
-}
-
-function FlowPaths({ isVisible }: { isVisible: boolean }) {
-  // Path definitions for crypto (left) to center
-  const leftPaths = [
-    "M 0 60 Q 80 60, 160 130",   // USDT to center
-    "M 0 130 Q 80 130, 160 130", // BTC to center
-    "M 0 200 Q 80 200, 160 130", // ETH to center
-  ];
-
-  // Path definitions for center to fiat (right)
-  const rightPaths = [
-    "M 160 130 Q 240 45, 320 45",   // center to USD
-    "M 160 130 Q 240 100, 320 105", // center to EUR
-    "M 160 130 Q 240 160, 320 165", // center to AMD
-    "M 160 130 Q 240 215, 320 215", // center to GBP
-  ];
-
+function DesktopDiagram() {
+  const dots = buildDesktopDots();
   return (
     <svg
-      viewBox="0 0 320 260"
-      className="absolute inset-0 w-full h-full"
+      viewBox={`0 0 ${DW} ${DH}`}
+      width="100%"
       style={{ overflow: "visible" }}
+      aria-hidden="true"
     >
       <defs>
-        {/* Glow filter for dots */}
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-
-        {/* Gradient for paths */}
-        <linearGradient id="pathGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#2a8a55" stopOpacity="0.4" />
-          <stop offset="50%" stopColor="#3da96a" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#2a8a55" stopOpacity="0.4" />
-        </linearGradient>
+        <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stopColor={GREEN} stopOpacity={0.16} />
+          <stop offset="100%" stopColor={GREEN} stopOpacity={0} />
+        </radialGradient>
       </defs>
 
-      {/* Left paths (crypto to hub) */}
-      {leftPaths.map((d, index) => (
-        <g key={`left-${index}`}>
-          <motion.path
-            d={d}
-            fill="none"
-            stroke="url(#pathGradient)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={isVisible ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
-            transition={{ duration: 0.8, delay: index * 0.15 }}
-          />
-          {isVisible && (
-            <motion.circle
-              r="4"
-              fill="#3da96a"
-              filter="url(#glow)"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 1, 1, 0] }}
-              transition={{
-                duration: 2.5,
-                delay: 0.8 + index * 0.4,
-                repeat: Infinity,
-                repeatDelay: 1.5,
-              }}
-            >
-              <animateMotion
-                dur="2.5s"
-                repeatCount="indefinite"
-                begin={`${0.8 + index * 0.4}s`}
-                path={d}
-              />
-            </motion.circle>
-          )}
-        </g>
+      {/* Section labels */}
+      <text x={DLX} y={28} textAnchor="middle" fill={GREEN} fillOpacity={0.28}
+        fontSize={9.5} fontFamily="Inter,sans-serif" fontWeight={500}
+        style={{ letterSpacing: "0.22em" }}>CRYPTO</text>
+      <text x={DRX} y={28} textAnchor="middle" fill={GREEN} fillOpacity={0.28}
+        fontSize={9.5} fontFamily="Inter,sans-serif" fontWeight={500}
+        style={{ letterSpacing: "0.22em" }}>FIAT</text>
+
+      {/* Connection lines */}
+      {D_CRYPTO.map(({ y }) => (
+        <path key={`cl-${y}`} d={dlPath(y)} fill="none" stroke={LINE} strokeWidth={1.0} />
+      ))}
+      {D_FIAT.map(({ y }) => (
+        <path key={`fl-${y}`} d={drPath(y)} fill="none" stroke={LINE} strokeWidth={1.0} />
       ))}
 
-      {/* Right paths (hub to fiat) */}
-      {rightPaths.map((d, index) => (
-        <g key={`right-${index}`}>
-          <motion.path
-            d={d}
-            fill="none"
-            stroke="url(#pathGradient)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={isVisible ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 + index * 0.15 }}
-          />
-          {isVisible && (
-            <motion.circle
-              r="4"
-              fill="#2a8a55"
-              filter="url(#glow)"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 1, 1, 0] }}
-              transition={{
-                duration: 2.5,
-                delay: 1.2 + index * 0.35,
-                repeat: Infinity,
-                repeatDelay: 1.5,
-              }}
-            >
-              <animateMotion
-                dur="2.5s"
-                repeatCount="indefinite"
-                begin={`${1.2 + index * 0.35}s`}
-                path={d}
-              />
-            </motion.circle>
-          )}
-        </g>
+      {/* Hub (draws its own glow + rings inside) */}
+      <Hub cx={DHX} cy={DHY} r={DHR} fs={13} />
+
+      {/* Currency pills */}
+      {D_CRYPTO.map(({ label, y }) => (
+        <Pill key={label} label={label} cx={DLX} cy={y} pw={DPW} ph={DPH} />
       ))}
+      {D_FIAT.map(({ label, y }) => (
+        <Pill key={label} label={label} cx={DRX} cy={y} pw={DPW} ph={DPH} />
+      ))}
+
+      {/* Animated dots */}
+      {dots.map((d, i) => <Dot key={i} {...d} />)}
     </svg>
   );
 }
 
-function MobileFlow({ isVisible }: { isVisible: boolean }) {
+// ─── Mobile diagram — 260 × 500, vertical ────────────────────────────────────
+
+const MW = 260, MH = 500;
+const MHX = 130, MHY = 242, MHR = 40;
+const MPW = 82, MPH = 30;
+
+const M_CRYPTO = [
+  { label: "USDT", y: 48  },
+  { label: "BTC",  y: 92  },
+  { label: "ETH",  y: 136 },
+  { label: "SOL",  y: 180 },
+];
+const M_FIAT = [
+  { label: "USD",  y: 310 },
+  { label: "EUR",  y: 354 },
+  { label: "AMD",  y: 398 },
+  { label: "GBP",  y: 442 },
+  { label: "AED",  y: 486 },
+];
+
+function muPath(y: number) {
+  const y0 = y + MPH / 2, y1 = MHY - MHR, cp = Math.round((y0 + y1) / 2);
+  return `M ${MHX} ${y0} C ${MHX} ${cp} ${MHX} ${cp} ${MHX} ${y1}`;
+}
+function mdPath(y: number) {
+  const y0 = MHY + MHR, y1 = y - MPH / 2, cp = Math.round((y0 + y1) / 2);
+  return `M ${MHX} ${y0} C ${MHX} ${cp} ${MHX} ${cp} ${MHX} ${y1}`;
+}
+
+function buildMobileDots(): DotDef[] {
+  const out: DotDef[] = [];
+  M_CRYPTO.forEach(({ y }, i) => {
+    const p = muPath(y), d = 2.0 + i * 0.22;
+    out.push({ path: p, dur: d, begin: i * 0.4 });
+    out.push({ path: p, dur: d, begin: i * 0.4 + d / 2 });
+  });
+  M_FIAT.forEach(({ y }, i) => {
+    const p = mdPath(y), d = 2.1 + i * 0.2;
+    out.push({ path: p, dur: d, begin: i * 0.38 + 0.2 });
+    out.push({ path: p, dur: d, begin: i * 0.38 + 0.2 + d / 2 });
+    if (i % 2 === 0) out.push({ path: p, dur: d + 0.6, begin: i * 0.32 + 0.7, reverse: true });
+  });
+  return out;
+}
+
+function MobileDiagram() {
+  const dots = buildMobileDots();
   return (
-    <div className="flex flex-col items-center gap-4">
-      {/* Crypto badges */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-        transition={{ duration: 0.5 }}
-        className="flex flex-wrap justify-center gap-2"
-      >
-        {cryptoCurrencies.map((crypto) => (
-          <div
-            key={crypto.ticker}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white rounded-full shadow-sm border border-gray-100"
-          >
-            <span className="font-bold text-sm text-forest-primary">{crypto.ticker}</span>
-            <span className="text-xs text-gray-400">{crypto.name}</span>
-          </div>
-        ))}
-      </motion.div>
+    <svg
+      viewBox={`0 0 ${MW} ${MH}`}
+      width={MW} height={MH}
+      style={{ maxWidth: "100%", overflow: "visible" }}
+      aria-hidden="true"
+    >
+      <defs>
+        <radialGradient id="mHubGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stopColor={GREEN} stopOpacity={0.14} />
+          <stop offset="100%" stopColor={GREEN} stopOpacity={0} />
+        </radialGradient>
+      </defs>
 
-      {/* Animated lines down */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={isVisible ? { opacity: 1 } : { opacity: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-        className="relative h-16 w-px bg-gradient-to-b from-forest-accent/30 to-forest-accent/50"
-      >
-        <motion.div
-          className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-forest-accent"
-          style={{ boxShadow: "0 0 10px #2a8a55" }}
-          animate={{ y: [0, 56, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-        />
-      </motion.div>
+      <text x={MHX} y={20} textAnchor="middle" fill={GREEN} fillOpacity={0.28}
+        fontSize={9} fontFamily="Inter,sans-serif" fontWeight={500}
+        style={{ letterSpacing: "0.20em" }}>CRYPTO</text>
+      <text x={MHX} y={288} textAnchor="middle" fill={GREEN} fillOpacity={0.28}
+        fontSize={9} fontFamily="Inter,sans-serif" fontWeight={500}
+        style={{ letterSpacing: "0.20em" }}>FIAT</text>
 
-      {/* ADEX Hub */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={isVisible ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="relative"
-      >
-        <motion.div
-          className="absolute inset-0 rounded-full border-2 border-forest-accent/30"
-          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.1, 0.3] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          style={{ width: "100%", height: "100%" }}
-        />
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-forest-primary to-forest-medium flex items-center justify-center shadow-lg shadow-forest-primary/20">
-          <span className="font-display text-white text-sm">
-            ADE<span className="text-forest-light">X</span>
-          </span>
-        </div>
-      </motion.div>
+      {M_CRYPTO.map(({ y }) => (
+        <path key={`mu-${y}`} d={muPath(y)} fill="none" stroke={LINE} strokeWidth={1.0} />
+      ))}
+      {M_FIAT.map(({ y }) => (
+        <path key={`md-${y}`} d={mdPath(y)} fill="none" stroke={LINE} strokeWidth={1.0} />
+      ))}
 
-      {/* Animated lines down */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={isVisible ? { opacity: 1 } : { opacity: 0 }}
-        transition={{ duration: 0.5, delay: 0.4 }}
-        className="relative h-16 w-px bg-gradient-to-b from-forest-accent/50 to-forest-accent/30"
-      >
-        <motion.div
-          className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-forest-light"
-          style={{ boxShadow: "0 0 10px #3da96a" }}
-          animate={{ y: [0, 56, 0] }}
-          transition={{ duration: 2, delay: 0.5, repeat: Infinity, ease: "easeInOut" }}
-        />
-      </motion.div>
+      {/* Hub with glow */}
+      <circle cx={MHX} cy={MHY} r={MHR + 60} fill="url(#mHubGlow)" />
+      <circle cx={MHX} cy={MHY} r={MHR + 28} fill="none" stroke={GREEN} strokeOpacity={0.055} strokeWidth={1} />
+      <circle cx={MHX} cy={MHY} r={MHR + 54} fill="none" stroke={GREEN} strokeOpacity={0.03}  strokeWidth={1} />
+      <circle cx={MHX} cy={MHY} r={MHR + 12} fill={GREEN} fillOpacity={0.05} />
+      <circle cx={MHX} cy={MHY} r={MHR + 6}  fill={GREEN} fillOpacity={0.08} />
+      <circle cx={MHX} cy={MHY} r={MHR}       fill={GREEN} />
+      <text x={MHX} y={MHY} textAnchor="middle" dominantBaseline="middle"
+        fill="white" fontSize={12} fontFamily="Inter,sans-serif" fontWeight={700}
+        style={{ letterSpacing: "0.12em" }}>ADEX</text>
 
-      {/* Fiat badges */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-        transition={{ duration: 0.5, delay: 0.5 }}
-        className="flex flex-wrap justify-center gap-2"
-      >
-        {fiatCurrencies.map((fiat) => (
-          <div
-            key={fiat.ticker}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white rounded-full shadow-sm border border-gray-100"
-          >
-            <span className="text-xs text-gray-400">{fiat.name}</span>
-            <span className="font-bold text-sm text-forest-primary">{fiat.ticker}</span>
-          </div>
-        ))}
-      </motion.div>
-    </div>
+      {M_CRYPTO.map(({ label, y }) => (
+        <Pill key={label} label={label} cx={MHX} cy={y} pw={MPW} ph={MPH} />
+      ))}
+      {M_FIAT.map(({ label, y }) => (
+        <Pill key={label} label={label} cx={MHX} cy={y} pw={MPW} ph={MPH} />
+      ))}
+
+      {dots.map((d, i) => <Dot key={i} {...d} />)}
+    </svg>
   );
 }
 
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+const STATS = [
+  { label: "Instant Settlement",   sub: "Trades clear within seconds" },
+  { label: "50+ Supported Assets", sub: "Major crypto & fiat currencies" },
+  { label: "Bank-grade Security",  sub: "Regulated & fully compliant" },
+];
+
+// ─── Animations ───────────────────────────────────────────────────────────────
+
+const fadeUp = (delay = 0) => ({
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { duration: 0.65, delay, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
+  },
+});
+
+// ─── Section ──────────────────────────────────────────────────────────────────
+
 export default function MoneyFlow() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const isInView = useInView(sectionRef, { once: true, amount: 0.3 });
+  const ref = useRef<HTMLElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
 
   return (
-    <section ref={sectionRef} className="pt-16 sm:pt-20 pb-12 sm:pb-14 bg-cream overflow-hidden">
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6">
-        {/* Section Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-10 sm:mb-12"
-        >
-          <p className="text-xs sm:text-sm uppercase tracking-[0.25em] text-forest-accent font-medium mb-3">
-            Liquidity Infrastructure
-          </p>
-          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl text-forest-primary">
-            Seamless On/Off Ramp
-          </h2>
-        </motion.div>
+    <section
+      ref={ref}
+      className="w-full relative overflow-hidden py-14 sm:py-16 lg:py-20"
+      style={{ background: "#f7faf8", borderTop: "1px solid #eaf0ec" }}
+    >
+      {/* Faint radial glow shifted toward diagram */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse 55% 65% at 68% 50%, rgba(27,61,47,0.05) 0%, transparent 68%)",
+        }}
+      />
 
-        {/* Desktop Hub-and-Spoke Layout */}
-        <div className="hidden md:block">
-          <div className="relative" style={{ height: "260px" }}>
-            {/* SVG Flow Paths */}
-            <FlowPaths isVisible={isInView} />
+      <div className="relative max-w-6xl mx-auto px-5 sm:px-8 lg:px-10">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:gap-14 xl:gap-20">
 
-            {/* Three Column Layout */}
-            <div className="relative z-10 h-full flex items-stretch justify-between">
-              {/* Left: Crypto Column */}
-              <div className="flex flex-col justify-between py-4">
-                {cryptoCurrencies.map((crypto, index) => (
-                  <CryptoBadge
-                    key={crypto.ticker}
-                    ticker={crypto.ticker}
-                    name={crypto.name}
-                    index={index}
-                    isVisible={isInView}
+          {/* ── LEFT: copy + stats ─────────────────────────────────────── */}
+          <motion.div
+            className="lg:w-[42%] flex-shrink-0"
+            variants={fadeUp(0)}
+            initial="hidden"
+            animate={inView ? "visible" : "hidden"}
+          >
+            <p
+              className="text-[11px] uppercase font-medium mb-4"
+              style={{ color: "#7a9e8e", letterSpacing: "0.28em" }}
+            >
+              On / Off Ramp
+            </p>
+
+            <h2
+              className="font-display leading-[1.08] mb-4"
+              style={{ color: GREEN, fontSize: "clamp(26px, 3.2vw, 42px)" }}
+            >
+              Seamless Conversion
+            </h2>
+
+            <p
+              className="text-[15px] leading-[1.7] mb-8"
+              style={{ color: "#7a8a82", maxWidth: 340 }}
+            >
+              Convert between crypto and fiat seamlessly through ADEX
+            </p>
+
+            {/* Stats stacked with dividers */}
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{ border: "1px solid rgba(27,61,47,0.09)" }}
+            >
+              {STATS.map((s, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3.5 px-5 py-4 bg-white"
+                  style={{ borderTop: i === 0 ? "none" : "1px solid rgba(27,61,47,0.07)" }}
+                >
+                  <span
+                    className="mt-[5px] flex-shrink-0 rounded-full"
+                    style={{ width: 7, height: 7, background: GREEN, opacity: 0.55 }}
                   />
-                ))}
-              </div>
-
-              {/* Center: ADEX Hub */}
-              <div className="flex items-center justify-center">
-                <AdexHub isVisible={isInView} />
-              </div>
-
-              {/* Right: Fiat Column */}
-              <div className="flex flex-col justify-between py-0">
-                {fiatCurrencies.map((fiat, index) => (
-                  <FiatBadge
-                    key={fiat.ticker}
-                    ticker={fiat.ticker}
-                    name={fiat.name}
-                    index={index}
-                    isVisible={isInView}
-                  />
-                ))}
-              </div>
+                  <div>
+                    <p className="text-sm font-semibold mb-0.5" style={{ color: GREEN }}>
+                      {s.label}
+                    </p>
+                    <p className="text-xs leading-snug" style={{ color: "#8a9e94" }}>
+                      {s.sub}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        </div>
+          </motion.div>
 
-        {/* Mobile Layout */}
-        <div className="md:hidden">
-          <MobileFlow isVisible={isInView} />
-        </div>
+          {/* ── RIGHT: diagram ─────────────────────────────────────────── */}
+          <motion.div
+            className="flex-1 flex items-center justify-center mt-10 lg:mt-0"
+            variants={fadeUp(0.18)}
+            initial="hidden"
+            animate={inView ? "visible" : "hidden"}
+          >
+            <div className="hidden lg:block w-full">
+              <DesktopDiagram />
+            </div>
+            <div className="lg:hidden">
+              <MobileDiagram />
+            </div>
+          </motion.div>
 
-        {/* Subtitle */}
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-          transition={{ duration: 0.6, delay: 0.8 }}
-          className="text-center text-gray-600 max-w-[600px] mx-auto mt-10 sm:mt-12 leading-relaxed"
-        >
-          Convert between cryptocurrencies and fiat currencies with institutional-grade
-          liquidity. Fast settlement, competitive rates, and full regulatory compliance.
-        </motion.p>
+        </div>
       </div>
     </section>
   );

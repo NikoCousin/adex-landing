@@ -1,371 +1,506 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useEffect, useState } from "react";
 import { motion, useInView } from "framer-motion";
-import Link from "next/link";
 
-// Generate procedural candlestick data with upward bias
-function generateCandleData(count: number) {
-  const candles = [];
-  let basePrice = 22000;
+const GREEN = "#1B3D2F";
 
-  for (let i = 0; i < count; i++) {
-    const isBullish = Math.random() < 0.8; // 80% green candles
-    const volatility = 800 + Math.random() * 1500;
-    const trend = 400 + Math.random() * 600; // Upward bias
+// ─── Seeded PRNG (LCG) — stable data across renders ──────────────────────────
 
-    const open = basePrice + (Math.random() - 0.5) * volatility * 0.3;
-    const close = isBullish
-      ? open + Math.random() * volatility * 0.6 + trend * 0.3
-      : open - Math.random() * volatility * 0.4;
-
-    const high = Math.max(open, close) + Math.random() * volatility * 0.3;
-    const low = Math.min(open, close) - Math.random() * volatility * 0.3;
-
-    candles.push({
-      open,
-      high,
-      low,
-      close,
-      isBullish: close > open,
-    });
-
-    basePrice = close + trend * 0.15;
-  }
-
-  return candles;
+function lcg(seed: number) {
+  let s = seed >>> 0;
+  return function () {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 0x100000000;
+  };
 }
 
-function CandlestickChart({ isVisible }: { isVisible: boolean }) {
-  const candles = useMemo(() => generateCandleData(48), []);
+// ─── Candle data ──────────────────────────────────────────────────────────────
 
-  const chartWidth = 800;
-  const chartHeight = 280;
-  const padding = { top: 20, right: 40, bottom: 30, left: 50 };
-  const innerWidth = chartWidth - padding.left - padding.right;
-  const innerHeight = chartHeight - padding.top - padding.bottom;
+interface Candle {
+  open: number; close: number; high: number; low: number; vol: number; bull: boolean;
+}
 
-  // Calculate price range
-  const allPrices = candles.flatMap((c) => [c.high, c.low]);
-  const minPrice = 20000;
-  const maxPrice = 60000;
-  const priceRange = maxPrice - minPrice;
+const CANDLES: Candle[] = (() => {
+  const rng = lcg(0xc0ffee42);
+  let price = 26500;
+  const out: Candle[] = [];
+  for (let i = 0; i < 46; i++) {
+    // increasingly bullish bias as portfolio grows
+    const bias = 0.52 + (i / 46) * 0.18;
+    const bull = rng() < bias;
+    const bodyPct = rng() * 0.026 + 0.006;
+    const wickHi  = rng() * 0.016 + 0.003;
+    const wickLo  = rng() * 0.013 + 0.002;
+    const open = price;
+    const body = open * bodyPct;
+    const close = bull ? open + body : open - body;
+    const high  = Math.max(open, close) + open * wickHi;
+    const low   = Math.min(open, close) - open * wickLo;
+    const vol   = rng() * 0.72 + 0.28;
+    // net-upward drift
+    price = close + (bull ? open * 0.0038 : -open * 0.0008);
+    out.push({ open, close, high, low, vol, bull });
+  }
+  return out;
+})();
 
-  // Scale functions
-  const xScale = (index: number) =>
-    padding.left + (index / (candles.length - 1)) * innerWidth;
-  const yScale = (price: number) =>
-    padding.top + (1 - (price - minPrice) / priceRange) * innerHeight;
+// ─── Chart geometry constants ─────────────────────────────────────────────────
 
-  const candleWidth = innerWidth / candles.length - 2;
+const CW = 700, CH = 260;
+const PAD = { t: 14, r: 14, b: 40, l: 52 };
+const VOL_H = 26;
+const CANDLE_H = CH - PAD.t - PAD.b - VOL_H - 10;  // ~170
+const PLOT_W   = CW - PAD.l - PAD.r;                 // ~634
+const SLOT     = PLOT_W / CANDLES.length;
+const BW       = Math.max(SLOT * 0.50, 5);           // candle body width
 
-  // Generate area path for gradient fill
-  const areaPath = useMemo(() => {
-    let path = `M ${xScale(0)} ${yScale(candles[0].close)}`;
-    candles.forEach((candle, i) => {
-      path += ` L ${xScale(i)} ${yScale(candle.close)}`;
-    });
-    path += ` L ${xScale(candles.length - 1)} ${yScale(minPrice)}`;
-    path += ` L ${xScale(0)} ${yScale(minPrice)} Z`;
-    return path;
-  }, [candles]);
+const P_MIN = Math.min(...CANDLES.map(c => c.low))  * 0.994;
+const P_MAX = Math.max(...CANDLES.map(c => c.high)) * 1.006;
+const P_RNG = P_MAX - P_MIN;
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const priceLabels = ["$20k", "$30k", "$40k", "$50k", "$60k"];
+function pY(price: number) {
+  return PAD.t + CANDLE_H - ((price - P_MIN) / P_RNG) * CANDLE_H;
+}
+function cX(i: number) {
+  return PAD.l + i * SLOT + SLOT / 2;
+}
+function volTop(vol: number) {
+  const areaTop = PAD.t + CANDLE_H + 10;
+  return areaTop + VOL_H * (1 - vol);
+}
+function volBottom() {
+  return PAD.t + CANDLE_H + 10 + VOL_H;
+}
+
+// Y-axis tick prices
+const Y_TICKS = Array.from({ length: 5 }, (_, i) => {
+  const price = P_MIN + (P_RNG / 4) * i;
+  const label = price >= 1000
+    ? `$${(price / 1000).toFixed(0)}k`
+    : `$${Math.round(price)}`;
+  return { y: pY(price), label };
+});
+
+// X-axis month labels
+const X_LABELS = [
+  { label: "Jan", i: 0  },
+  { label: "Mar", i: 8  },
+  { label: "May", i: 16 },
+  { label: "Jul", i: 23 },
+  { label: "Sep", i: 31 },
+  { label: "Nov", i: 39 },
+  { label: "Dec", i: 45 },
+];
+
+// ─── Animated count-up stat ───────────────────────────────────────────────────
+
+function AnimatedStat({ value, prefix = "", active }: {
+  value: number; prefix?: string; active: boolean;
+}) {
+  const [display, setDisplay] = useState(0);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (!active || started.current) return;
+    started.current = true;
+    const dur = 1200;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / dur, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      setDisplay(value * e);
+      if (p < 1) requestAnimationFrame(tick);
+      else setDisplay(value);
+    };
+    requestAnimationFrame(tick);
+  }, [active, value]);
 
   return (
-    <div className="w-full overflow-x-auto scrollbar-hide">
-      <svg
-        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-        className="w-full min-w-[600px]"
-        style={{ height: "280px" }}
-      >
-        <defs>
-          {/* Gradient for area fill */}
-          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2a8a55" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#2a8a55" stopOpacity="0" />
-          </linearGradient>
-        </defs>
+    <span>
+      {prefix}
+      {Math.round(display).toLocaleString("en-US")}
+    </span>
+  );
+}
 
-        {/* Grid lines */}
-        {priceLabels.map((_, i) => {
-          const y = padding.top + (i / (priceLabels.length - 1)) * innerHeight;
+// ─── Mini bar spark (transactions) ───────────────────────────────────────────
+
+const SPARK = [3, 5, 4, 7, 5, 8, 6, 9, 7, 8, 10, 9];
+
+// ─── Candlestick chart ────────────────────────────────────────────────────────
+
+function CandlestickChart({ active }: { active: boolean }) {
+  const [revealW, setRevealW] = useState(0);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (!active || started.current) return;
+    started.current = true;
+    const dur = 2800;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / dur, 1);
+      const e = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p;
+      setRevealW(e * PLOT_W);
+      if (p < 1) requestAnimationFrame(tick);
+      else setRevealW(PLOT_W);
+    };
+    requestAnimationFrame(tick);
+  }, [active]);
+
+  return (
+    <svg
+      viewBox={`0 0 ${CW} ${CH}`}
+      width="100%"
+      style={{ overflow: "visible" }}
+      aria-hidden="true"
+    >
+      <defs>
+        <clipPath id="adv-chart-reveal">
+          <rect x={PAD.l} y={0} width={revealW} height={CH} />
+        </clipPath>
+      </defs>
+
+      {/* Y-axis grid lines + labels */}
+      {Y_TICKS.map(({ y, label }, i) => (
+        <g key={i}>
+          <line
+            x1={PAD.l} y1={y} x2={CW - PAD.r} y2={y}
+            stroke="rgba(255,255,255,0.05)" strokeWidth={1}
+          />
+          <text
+            x={PAD.l - 7} y={y}
+            textAnchor="end" dominantBaseline="middle"
+            fill="rgba(255,255,255,0.25)"
+            fontSize={9} fontFamily="Inter,sans-serif"
+          >
+            {label}
+          </text>
+        </g>
+      ))}
+
+      {/* X-axis baseline */}
+      <line
+        x1={PAD.l} y1={CH - PAD.b}
+        x2={CW - PAD.r} y2={CH - PAD.b}
+        stroke="rgba(255,255,255,0.06)" strokeWidth={1}
+      />
+
+      {/* X-axis month labels */}
+      {X_LABELS.map(({ label, i }) => (
+        <text
+          key={label}
+          x={cX(i)} y={CH - PAD.b + 15}
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.22)"
+          fontSize={9} fontFamily="Inter,sans-serif"
+        >
+          {label}
+        </text>
+      ))}
+
+      {/* Clipped candles + volume */}
+      <g clipPath="url(#adv-chart-reveal)">
+
+        {/* Volume bars */}
+        {CANDLES.map((c, i) => {
+          const x = cX(i);
+          const yT = volTop(c.vol);
+          const yB = volBottom();
           return (
-            <line
-              key={i}
-              x1={padding.left}
-              y1={y}
-              x2={chartWidth - padding.right}
-              y2={y}
-              stroke="#e5e7eb"
-              strokeWidth="1"
-              strokeDasharray="4,4"
+            <rect
+              key={`vol-${i}`}
+              x={x - BW / 2} y={yT}
+              width={BW} height={yB - yT}
+              fill={c.bull ? "rgba(34,197,94,0.20)" : "rgba(239,68,68,0.16)"}
+              rx={1}
             />
           );
         })}
 
-        {/* Area fill */}
-        <motion.path
-          d={areaPath}
-          fill="url(#areaGradient)"
-          initial={{ opacity: 0 }}
-          animate={isVisible ? { opacity: 1 } : { opacity: 0 }}
-          transition={{ duration: 1, delay: 0.5 }}
-        />
+        {/* Wicks */}
+        {CANDLES.map((c, i) => (
+          <line
+            key={`wick-${i}`}
+            x1={cX(i)} y1={pY(c.high)}
+            x2={cX(i)} y2={pY(c.low)}
+            stroke={c.bull ? "#22c55e" : "#ef4444"}
+            strokeWidth={1}
+            strokeOpacity={0.65}
+          />
+        ))}
 
-        {/* Candles */}
-        {candles.map((candle, i) => {
-          const x = xScale(i);
-          const openY = yScale(candle.open);
-          const closeY = yScale(candle.close);
-          const highY = yScale(candle.high);
-          const lowY = yScale(candle.low);
-          const bodyTop = Math.min(openY, closeY);
-          const bodyHeight = Math.abs(closeY - openY);
-          const color = candle.isBullish ? "#2a8a55" : "#dc2626";
-
+        {/* Bodies */}
+        {CANDLES.map((c, i) => {
+          const x   = cX(i);
+          const yT  = pY(Math.max(c.open, c.close));
+          const yB  = pY(Math.min(c.open, c.close));
+          const h   = Math.max(yB - yT, 1);
           return (
-            <motion.g
-              key={i}
-              initial={{ opacity: 0, scaleY: 0 }}
-              animate={
-                isVisible
-                  ? { opacity: 1, scaleY: 1 }
-                  : { opacity: 0, scaleY: 0 }
-              }
-              transition={{
-                duration: 0.4,
-                delay: 0.3 + i * 0.015,
-                ease: "easeOut",
-              }}
-              style={{ transformOrigin: `${x}px ${yScale(minPrice)}px` }}
-            >
-              {/* Wick */}
-              <line
-                x1={x}
-                y1={highY}
-                x2={x}
-                y2={lowY}
-                stroke={color}
-                strokeWidth="1"
-              />
-              {/* Body */}
-              <rect
-                x={x - candleWidth / 2}
-                y={bodyTop}
-                width={candleWidth}
-                height={Math.max(bodyHeight, 1)}
-                fill={color}
-                rx="1"
-              />
-            </motion.g>
+            <rect
+              key={`body-${i}`}
+              x={x - BW / 2} y={yT}
+              width={BW} height={h}
+              fill={c.bull ? "#22c55e" : "#ef4444"}
+              fillOpacity={c.bull ? 0.90 : 0.80}
+              rx={1}
+            />
           );
         })}
 
-        {/* Y-axis labels */}
-        {priceLabels.map((label, i) => {
-          const y = padding.top + (i / (priceLabels.length - 1)) * innerHeight;
-          return (
-            <text
-              key={label}
-              x={padding.left - 8}
-              y={y + 4}
-              textAnchor="end"
-              className="text-[10px] fill-gray-400"
-            >
-              {label}
-            </text>
-          );
-        })}
-
-        {/* X-axis labels */}
-        {months.map((month, i) => {
-          const x = padding.left + (i / (months.length - 1)) * innerWidth;
-          return (
-            <text
-              key={month}
-              x={x}
-              y={chartHeight - 8}
-              textAnchor="middle"
-              className="text-[10px] fill-gray-400"
-            >
-              {month}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function SparkLine() {
-  const points = "0,20 10,18 20,22 30,15 40,17 50,12 60,14 70,8 80,10 90,5 100,7";
-
-  return (
-    <svg viewBox="0 0 100 25" className="w-16 h-6">
-      <polyline
-        points={points}
-        fill="none"
-        stroke="#2a8a55"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      </g>
     </svg>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  badge,
-  valueColor = "text-gray-900",
-  delay = 0,
-  isVisible,
-}: {
-  label: string;
-  value: string;
-  badge?: string;
-  valueColor?: string;
-  delay?: number;
-  isVisible: boolean;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-      transition={{ duration: 0.5, delay }}
-      className="flex-1 min-w-[140px]"
-    >
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <div className="flex items-center gap-2">
-        <p className={`text-xl sm:text-2xl font-bold ${valueColor}`}>{value}</p>
-        {badge && (
-          <span className="px-2 py-0.5 bg-forest-accent/10 text-forest-accent text-xs font-medium rounded-full">
-            {badge}
-          </span>
-        )}
-      </div>
-    </motion.div>
-  );
-}
+// ─── Fade-up variants ─────────────────────────────────────────────────────────
+
+const fadeUp = (delay = 0) => ({
+  hidden: { opacity: 0, y: 18 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { duration: 0.65, delay, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
+  },
+});
+
+// ─── Section ──────────────────────────────────────────────────────────────────
 
 export default function Advisory() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const isInView = useInView(sectionRef, { once: true, amount: 0.2 });
+  const ref = useRef<HTMLElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
 
   return (
-    <section ref={sectionRef} className="py-16 sm:py-20 bg-cream overflow-hidden">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        {/* Top Part - Header */}
-        <div className="text-center mb-12">
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5 }}
-            className="text-xs sm:text-sm uppercase tracking-[0.2em] text-forest-accent font-medium mb-4"
-          >
-            Advisory
-          </motion.p>
+    <section
+      ref={ref}
+      className="w-full py-16 sm:py-20 lg:py-24"
+      style={{ background: "#f7faf8", borderTop: "1px solid #eaf0ec" }}
+    >
+      <div className="max-w-4xl mx-auto px-5 sm:px-8 lg:px-10 flex flex-col items-center">
 
-          <motion.h2
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="font-display text-3xl sm:text-4xl md:text-5xl text-forest-primary mb-6"
-          >
-            Strategic Guidance, Tailored to Your Goals.
-          </motion.h2>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-gray-600 max-w-[600px] mx-auto mb-8 leading-relaxed"
-          >
-            We help define the right approach to digital asset exposure, treasury
-            positioning, and long-term portfolio logic.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
-            <Link
-              href="/contact"
-              className="inline-flex items-center gap-2 px-8 py-3 border-2 border-forest-primary text-forest-primary rounded-full font-medium transition-all duration-300 hover:bg-forest-primary hover:text-white"
-            >
-              Contact Us
-            </Link>
-          </motion.div>
-        </div>
-
-        {/* Dashboard Mockup Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="max-w-[900px] mx-auto rounded-2xl overflow-hidden shadow-xl shadow-black/10"
+        {/* Eyebrow */}
+        <motion.p
+          variants={fadeUp(0)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="text-[11px] uppercase font-medium mb-4 text-center"
+          style={{ color: "#7a9e8e", letterSpacing: "0.28em" }}
         >
-          {/* Window Frame Bar */}
-          <div className="bg-gray-100 px-4 py-3 flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
-            <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
-            <div className="w-3 h-3 rounded-full bg-[#28c840]" />
+          Advisory
+        </motion.p>
+
+        {/* Title */}
+        <motion.h2
+          variants={fadeUp(0.08)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="font-display text-center leading-[1.1] mb-5"
+          style={{ color: GREEN, fontSize: "clamp(26px, 3.8vw, 46px)", maxWidth: 620 }}
+        >
+          Strategic Guidance, Tailored to Your Goals.
+        </motion.h2>
+
+        {/* Subtitle */}
+        <motion.p
+          variants={fadeUp(0.15)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="text-center text-[15px] leading-[1.75] mb-8"
+          style={{ color: "#7a8a82", maxWidth: 580 }}
+        >
+          We help define the right approach to digital asset exposure, treasury
+          positioning, and long-term portfolio logic.
+        </motion.p>
+
+        {/* CTA */}
+        <motion.div
+          variants={fadeUp(0.22)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="mb-12"
+        >
+          <a
+            href="#"
+            className="inline-flex items-center gap-2 px-7 py-3 text-sm font-semibold rounded-lg transition-all duration-200"
+            style={{
+              color: GREEN,
+              border: `1.5px solid ${GREEN}`,
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = GREEN;
+              (e.currentTarget as HTMLElement).style.color = "#fff";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+              (e.currentTarget as HTMLElement).style.color = GREEN;
+            }}
+          >
+            Contact Us
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+            </svg>
+          </a>
+        </motion.div>
+
+        {/* ── Dashboard card ─────────────────────────────────────────────── */}
+        <motion.div
+          variants={fadeUp(0.30)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="w-full rounded-2xl overflow-hidden"
+          style={{
+            background: "#111827",
+            border: "1px solid rgba(255,255,255,0.07)",
+            boxShadow: "0 32px 80px rgba(0,0,0,0.20), 0 4px 20px rgba(0,0,0,0.12)",
+          }}
+        >
+
+          {/* Card header */}
+          <div
+            className="flex items-center justify-between px-5 sm:px-6 py-4"
+            style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#0F172A" }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className="block rounded-full"
+                style={{ width: 6, height: 6, background: "#10B981" }}
+              />
+              <span
+                className="text-[10px] font-semibold"
+                style={{ color: "#9CA3AF", letterSpacing: "0.10em" }}
+              >
+                PORTFOLIO PERFORMANCE
+              </span>
+            </div>
+            {/* Three-dot menu */}
+            <div className="flex items-center gap-[3px] opacity-30">
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  className="block rounded-full"
+                  style={{ width: 3.5, height: 3.5, background: "#9CA3AF" }}
+                />
+              ))}
+            </div>
           </div>
 
-          {/* Dashboard Content */}
-          <div className="bg-white p-4 sm:p-8">
-            {/* Stats Row */}
-            <div className="flex flex-wrap gap-4 sm:gap-6 mb-8 pb-6 border-b border-gray-100">
-              <StatCard
-                label="Total Value"
-                value="$55,314"
-                badge="+105.98%"
-                valueColor="text-forest-accent"
-                delay={0.4}
-                isVisible={isInView}
-              />
-              <StatCard
-                label="Cost Basis"
-                value="$26,854"
-                delay={0.5}
-                isVisible={isInView}
-              />
-              <StatCard
-                label="Unrealized Gains"
-                value="$28,459"
-                valueColor="text-forest-accent"
-                delay={0.6}
-                isVisible={isInView}
-              />
-
-              {/* Mini Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-                transition={{ duration: 0.5, delay: 0.7 }}
-                className="flex-1 min-w-[140px] flex flex-col items-end sm:border-l sm:border-gray-100 sm:pl-6"
+          {/* Stat blocks */}
+          <div
+            className="grid grid-cols-2 sm:grid-cols-4 gap-px"
+            style={{
+              background: "rgba(255,255,255,0.045)",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            {/* Total Value */}
+            <div className="flex flex-col gap-1 px-5 py-4" style={{ background: "#111827" }}>
+              <span
+                className="text-[10px] font-medium uppercase"
+                style={{ color: "#6B7280", letterSpacing: "0.08em" }}
               >
-                <div className="flex items-center gap-3 mb-1">
-                  <SparkLine />
-                  <span className="text-xs text-gray-500">128 transactions</span>
-                </div>
-                <a
-                  href="#"
-                  className="text-xs font-medium text-forest-accent hover:text-forest-primary transition-colors"
+                Total Value
+              </span>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: "#F9FAFB" }}>
+                $<AnimatedStat value={55314} active={inView} />
+              </span>
+              <div className="flex items-center gap-1">
+                <svg
+                  className="w-3 h-3 flex-shrink-0"
+                  fill="none" stroke="#22c55e" strokeWidth={2.5}
+                  viewBox="0 0 24 24"
                 >
-                  BREAKDOWN →
-                </a>
-              </motion.div>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+                <span className="text-[11px] font-semibold" style={{ color: "#22c55e" }}>
+                  +105.98%
+                </span>
+              </div>
             </div>
 
-            {/* Chart Area */}
-            <CandlestickChart isVisible={isInView} />
+            {/* Cost Basis */}
+            <div className="flex flex-col gap-1 px-5 py-4" style={{ background: "#111827" }}>
+              <span
+                className="text-[10px] font-medium uppercase"
+                style={{ color: "#6B7280", letterSpacing: "0.08em" }}
+              >
+                Cost Basis
+              </span>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: "#F9FAFB" }}>
+                $<AnimatedStat value={26854} active={inView} />
+              </span>
+              <span className="text-[10px]" style={{ color: "#4B5563" }}>
+                Initial investment
+              </span>
+            </div>
+
+            {/* Unrealized Gains */}
+            <div className="flex flex-col gap-1 px-5 py-4" style={{ background: "#111827" }}>
+              <span
+                className="text-[10px] font-medium uppercase"
+                style={{ color: "#6B7280", letterSpacing: "0.08em" }}
+              >
+                Unrealized Gains
+              </span>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: "#22c55e" }}>
+                +$<AnimatedStat value={28459} active={inView} />
+              </span>
+              <span className="text-[10px]" style={{ color: "#4B5563" }}>
+                Across all positions
+              </span>
+            </div>
+
+            {/* Transactions */}
+            <div className="flex flex-col gap-1 px-5 py-4" style={{ background: "#111827" }}>
+              <span
+                className="text-[10px] font-medium uppercase"
+                style={{ color: "#6B7280", letterSpacing: "0.08em" }}
+              >
+                Transactions
+              </span>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: "#F9FAFB" }}>
+                128
+              </span>
+              {/* Mini bar chart */}
+              <div className="flex items-end gap-px" style={{ height: 16 }}>
+                {SPARK.map((h, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-sm"
+                    style={{
+                      height: `${(h / 10) * 100}%`,
+                      background: i >= SPARK.length - 4
+                        ? "rgba(34,197,94,0.55)"
+                        : "rgba(255,255,255,0.12)",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
+
+          {/* Candlestick chart */}
+          <div className="px-3 sm:px-5 pt-5 pb-2">
+            <CandlestickChart active={inView} />
+          </div>
+
+          {/* Card footer */}
+          <div
+            className="flex items-center justify-between px-5 sm:px-6 py-3"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
+          >
+            <span className="text-[10px]" style={{ color: "#374151" }}>
+              Performance data — illustrative only
+            </span>
+            <span
+              className="text-[10px] font-semibold"
+              style={{ color: "#4B5563", letterSpacing: "0.10em" }}
+            >
+              BREAKDOWN →
+            </span>
+          </div>
+
         </motion.div>
+
       </div>
     </section>
   );

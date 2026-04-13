@@ -2,247 +2,167 @@
 
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
-import Link from "next/link";
 
-const featureTags = [
-  "Large-volume execution",
-  "Primary liquidity",
-  "Reduced market impact",
-  "Private settlement",
-  "Tailored pricing",
-  "Tailored support",
+const GREEN = "#1B3D2F";
+
+const fadeUp = (delay = 0) => ({
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { duration: 0.65, delay, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
+  },
+});
+
+const FEATURES = [
+  ["Large-volume execution", "Primary liquidity"],
+  ["Reduced market impact", "Private settlement"],
+  ["Tailored pricing",       "Tailored support"],
 ];
 
-const cryptoIcons = [
-  { symbol: "A", name: "AVAX", color: "#E84142" },
-  { symbol: "₿", name: "BTC", color: "#F7931A" },
-  { symbol: "◆", name: "ETH", color: "#627EEA" },
-  { symbol: "₳", name: "ADA", color: "#0033AD" },
-  { symbol: "£", name: "GBP", color: "#C41E3A" },
-  { symbol: "€", name: "EUR", color: "#2a8a55" },
-  { symbol: "$", name: "USD", color: "#C9A227" },
-  { symbol: "●", name: "DOT", color: "#E6007A" },
-  { symbol: "⬡", name: "LINK", color: "#2A5ADA" },
-  { symbol: "₮", name: "USDT", color: "#26A17B" },
+const ASSETS = [
+  { symbol: "BTC",  label: "₿",  bg: "#F7931A", fg: "#fff" },
+  { symbol: "ETH",  label: "◆",  bg: "#627EEA", fg: "#fff" },
+  { symbol: "USDT", label: "₮",  bg: "#26A17B", fg: "#fff" },
+  { symbol: "SOL",  label: "◎",  bg: "#9945FF", fg: "#fff" },
+  { symbol: "AVAX", label: "A",  bg: "#E84142", fg: "#fff" },
+  { symbol: "BNB",  label: "B",  bg: "#F3BA2F", fg: "#fff" },
+  { symbol: "USD",  label: "$",  bg: "#4C8C5E", fg: "#fff" },
+  { symbol: "EUR",  label: "€",  bg: "#3B6FA0", fg: "#fff" },
+  { symbol: "GBP",  label: "£",  bg: "#6B4FA0", fg: "#fff" },
 ];
-
-function CryptoCard({
-  symbol,
-  name,
-  color,
-  index,
-  isVisible,
-}: {
-  symbol: string;
-  name: string;
-  color: string;
-  index: number;
-  isVisible: boolean;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-      transition={{ duration: 0.5, delay: 0.1 + index * 0.05 }}
-      className="relative"
-    >
-      <motion.div
-        animate={
-          isVisible
-            ? {
-                y: [0, -6, 0],
-              }
-            : {}
-        }
-        transition={{
-          duration: 3,
-          delay: index * 0.2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center group hover:shadow-md transition-shadow duration-300"
-      >
-        <span
-          className="text-2xl sm:text-3xl font-bold transition-transform duration-300 group-hover:scale-110"
-          style={{ color }}
-        >
-          {symbol}
-        </span>
-      </motion.div>
-      <p className="text-[10px] sm:text-xs text-gray-400 text-center mt-2 font-medium">
-        {name}
-      </p>
-    </motion.div>
-  );
-}
 
 export default function PrimeOTC() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const isInView = useInView(sectionRef, { once: true, amount: 0.2 });
-
-  const textVariants = {
-    hidden: { opacity: 0, x: -30 },
-    visible: {
-      opacity: 1,
-      x: 0,
-      transition: {
-        duration: 0.6,
-        ease: "easeOut" as const,
-      },
-    },
-  };
-
-  const staggerContainer = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.3,
-      },
-    },
-  };
-
-  const tagVariants = {
-    hidden: { opacity: 0, y: 10 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.4 },
-    },
-  };
+  const ref = useRef<HTMLElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
 
   return (
-    <section ref={sectionRef} className="py-16 sm:py-20 bg-cream overflow-hidden">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          {/* Left Column - Text Content */}
-          <div>
-            <motion.p
-              variants={textVariants}
-              initial="hidden"
-              animate={isInView ? "visible" : "hidden"}
-              className="text-xs sm:text-sm uppercase tracking-[0.2em] text-forest-accent font-medium mb-4"
-            >
-              Prime OTC Desk
-            </motion.p>
+    <section
+      ref={ref}
+      className="w-full bg-white py-12 sm:py-16 lg:py-20"
+      style={{ borderTop: "1px solid #f0f0f0" }}
+    >
+      <div className="max-w-3xl mx-auto px-5 sm:px-8 lg:px-10 flex flex-col items-center">
 
-            <motion.h2
-              variants={textVariants}
-              initial="hidden"
-              animate={isInView ? "visible" : "hidden"}
-              transition={{ delay: 0.1 }}
-              className="font-display text-3xl sm:text-4xl lg:text-5xl text-forest-primary leading-tight mb-6"
-            >
-              Prime OTC Desk for Prime Clients
-            </motion.h2>
+        {/* Eyebrow */}
+        <motion.p
+          variants={fadeUp(0)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="text-[11px] uppercase font-medium mb-4 text-center"
+          style={{ color: "#7a9e8e", letterSpacing: "0.28em" }}
+        >
+          OTC Desk
+        </motion.p>
 
-            <motion.p
-              variants={textVariants}
-              initial="hidden"
-              animate={isInView ? "visible" : "hidden"}
-              transition={{ delay: 0.2 }}
-              className="text-gray-600 leading-relaxed mb-8"
-            >
-              Designed for larger transactions and higher expectations, our OTC desk
-              provides a more private and efficient way to execute digital asset
-              trades. Clients benefit from tailored pricing, direct handling, and a
-              smoother settlement experience without the noise of public markets.
-            </motion.p>
+        {/* Title */}
+        <motion.h2
+          variants={fadeUp(0.08)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="font-display text-center leading-[1.1] mb-5"
+          style={{ color: GREEN, fontSize: "clamp(26px, 3.8vw, 44px)", maxWidth: 580 }}
+        >
+          Prime OTC Desk for Prime Clients
+        </motion.h2>
 
-            {/* Feature Tags Grid */}
-            <motion.div
-              variants={staggerContainer}
-              initial="hidden"
-              animate={isInView ? "visible" : "hidden"}
-              className="grid grid-cols-2 gap-3 mb-8"
-            >
-              {featureTags.map((tag, index) => (
-                <motion.div
-                  key={index}
-                  variants={tagVariants}
-                  className="px-4 sm:px-5 py-2.5 border border-forest-accent/30 rounded-full text-sm font-medium text-forest-primary/80 text-center whitespace-nowrap"
-                >
-                  {tag}
-                </motion.div>
-              ))}
-            </motion.div>
+        {/* Subtitle */}
+        <motion.p
+          variants={fadeUp(0.16)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="text-center text-[15px] leading-[1.75] mb-12"
+          style={{ color: "#7a8a82", maxWidth: 620 }}
+        >
+          Designed for larger transactions and higher expectations, our OTC desk
+          provides a more private and efficient way to execute digital asset trades.
+          Clients benefit from tailored pricing, direct handling, and a smoother
+          settlement experience without the noise of public markets.
+        </motion.p>
 
-            {/* CTA Button */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-            >
-              <Link
-                href="/quote"
-                className="inline-flex items-center gap-2 px-8 py-4 bg-forest-primary text-white rounded-full font-medium transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-forest-primary/25 group"
+        {/* Feature pills — 2-col grid */}
+        <motion.div
+          variants={fadeUp(0.24)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="grid grid-cols-2 gap-2.5 w-full mb-12"
+          style={{ maxWidth: 480 }}
+        >
+          {FEATURES.map((row, ri) =>
+            row.map((label, ci) => (
+              <div
+                key={`${ri}-${ci}`}
+                className="flex items-center justify-center px-5 py-2.5 text-xs font-semibold text-center"
+                style={{
+                  color: GREEN,
+                  border: `1px solid rgba(27,61,47,0.22)`,
+                  borderRadius: 99,
+                  letterSpacing: "0.04em",
+                  background: "white",
+                }}
               >
-                Quote Now
-                <svg
-                  className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 8l4 4m0 0l-4 4m4-4H3"
-                  />
-                </svg>
-              </Link>
-            </motion.div>
-          </div>
+                {label}
+              </div>
+            ))
+          )}
+        </motion.div>
 
-          {/* Right Column - Crypto Icons Grid */}
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: 30 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="flex justify-center lg:justify-end"
+        {/* Asset badge grid */}
+        <motion.div
+          variants={fadeUp(0.32)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+          className="mb-12"
+        >
+          <p
+            className="text-center text-[10px] uppercase font-medium mb-4"
+            style={{ color: "#aabfb5", letterSpacing: "0.22em" }}
           >
-            <div className="grid grid-cols-5 sm:grid-cols-5 lg:grid-cols-5 gap-3 sm:gap-4">
-              {/* Row 1 - 3 items centered */}
-              <div className="col-start-2 col-span-1">
-                <CryptoCard {...cryptoIcons[0]} index={0} isVisible={isInView} />
+            Supported Assets
+          </p>
+          <div className="grid grid-cols-5 sm:grid-cols-9 gap-3 justify-items-center">
+            {ASSETS.map(({ symbol, label, bg, fg }) => (
+              <div key={symbol} className="flex flex-col items-center gap-1.5">
+                <div
+                  className="flex items-center justify-center rounded-full text-xs font-bold select-none"
+                  style={{
+                    width: 36, height: 36,
+                    background: bg,
+                    color: fg,
+                    fontSize: 14,
+                    opacity: 0.82,
+                  }}
+                >
+                  {label}
+                </div>
+                <span
+                  className="text-[9px] font-medium tracking-wide"
+                  style={{ color: "#aabfb5" }}
+                >
+                  {symbol}
+                </span>
               </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[1]} index={1} isVisible={isInView} />
-              </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[2]} index={2} isVisible={isInView} />
-              </div>
+            ))}
+          </div>
+        </motion.div>
 
-              {/* Row 2 - 4 items */}
-              <div className="col-start-1 col-span-1">
-                <CryptoCard {...cryptoIcons[3]} index={3} isVisible={isInView} />
-              </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[4]} index={4} isVisible={isInView} />
-              </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[5]} index={5} isVisible={isInView} />
-              </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[6]} index={6} isVisible={isInView} />
-              </div>
-              <div className="col-span-1" />
+        {/* CTA */}
+        <motion.div
+          variants={fadeUp(0.40)}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+        >
+          <a
+            href="#"
+            className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-white transition-opacity duration-200 hover:opacity-90"
+            style={{ background: GREEN, borderRadius: 8 }}
+          >
+            Quote Now
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+            </svg>
+          </a>
+        </motion.div>
 
-              {/* Row 3 - 3 items centered */}
-              <div className="col-start-2 col-span-1">
-                <CryptoCard {...cryptoIcons[7]} index={7} isVisible={isInView} />
-              </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[8]} index={8} isVisible={isInView} />
-              </div>
-              <div className="col-span-1">
-                <CryptoCard {...cryptoIcons[9]} index={9} isVisible={isInView} />
-              </div>
-            </div>
-          </motion.div>
-        </div>
       </div>
     </section>
   );
